@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>综合防御平台 · 防护·监控·加固</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div id="login-page" class="login-wrap hidden">
+  <div class="login-box">
+    <div class="login-logo">综合防御平台</div>
+    <div class="login-sub">通用防御 WAF · 应急监控 · 加固平台</div>
+    <input id="login-token" type="password" placeholder="输入面板访问令牌">
+    <button id="login-btn" class="btn primary block">进入控制台</button>
+    <div id="login-err" class="login-err"></div>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-name">综合防御平台</div>
+      <div class="brand-sub">通用防御平台</div>
+    </div>
+    <nav class="nav">
+      <a href="#dashboard" class="nav-item active" data-page="dashboard">总览</a>
+      <a href="#targets" class="nav-item" data-page="targets">靶机管理</a>
+      <a href="#monitor" class="nav-item" data-page="monitor">实时监测</a>
+      <a href="#harden" class="nav-item" data-page="harden">一键加固</a>
+      <a href="#waf" class="nav-item" data-page="waf">WAF 规则</a>
+      <a href="#terminal" class="nav-item" data-page="terminal">远程执行</a>
+      <a href="#alerts" class="nav-item" data-page="alerts">告警中心<span id="alert-badge" class="badge hidden">0</span></a>
+      <a href="#defense" class="nav-item" data-page="defense">防御作战</a>
+      <a href="#rag" class="nav-item" data-page="rag">RAG 知识库</a>
+      <a href="#settings" class="nav-item" data-page="settings">设置</a>
+    </nav>
+    <div class="sidebar-foot" id="conn-status">
+      <div class="dot" id="conn-dot"></div>
+      <span id="conn-text">未连接</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="page-dashboard" class="page"></div>
+    <div id="page-targets" class="page hidden"></div>
+    <div id="page-monitor" class="page hidden"></div>
+    <div id="page-harden" class="page hidden"></div>
+    <div id="page-waf" class="page hidden"></div>
+    <div id="page-terminal" class="page hidden"></div>
+    <div id="page-alerts" class="page hidden"></div>
+    <div id="page-defense" class="page hidden"></div>
+    <div id="page-rag" class="page hidden"></div>
+    <div id="page-settings" class="page hidden"></div>
+  </main>
+</div>
+
+<!-- 弹窗 -->
+<div id="modal-mask" class="modal-mask hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <span id="modal-title">弹窗</span>
+      <button class="modal-close" onclick="UI.closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
