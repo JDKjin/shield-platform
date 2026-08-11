@@ -129,6 +129,10 @@
 **/agent.json
 **/panel.json
 
+# 放行 release 目录（Linux 预编译二进制 + SHA256 校验）
+!release/
+!release/*
+
 # Dart
 **/.dart_tool/
 **/*.dart_tool
