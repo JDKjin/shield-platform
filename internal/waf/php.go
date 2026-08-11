@@ -100,6 +100,17 @@ func DefaultRules() []*Rule {
 		{ID: "java_4", Name: "SpEL/表达式注入", Category: "Java漏洞", Pattern: `(?i)(T\(java|Runtime\.getRuntime|ProcessBuilder|new\s+java\.lang|${T\(|@{|#{T\(|freemarker\.template|\.class\.forName)`, Action: "block", Enabled: true, Level: 1},
 		{ID: "java_5", Name: "Shiro/WebLogic 特征", Category: "Java漏洞", Pattern: `(?i)(rememberMe=|wls9-async|_async/|bea_wls|weblogic\.servlet|ShiroKey|CVE-2019-2725|CVE-2018-2894)`, Action: "block", Enabled: true, Level: 1},
 		{ID: "java_6", Name: "JBoss/GlassFish 特征", Category: "Java漏洞", Pattern: `(?i)(/invoker/JMXInvokerServlet|/jmx-console/|/web-console/|/htmlAdaptor|/server-status|glassfish|jsp?/(admin|test))`, Action: "block", Enabled: true, Level: 1},
+		{ID: "java_7", Name: "Shiro反序列化大Cookie", Category: "Java漏洞", Pattern: `(?i)rememberMe=[A-Za-z0-9+/=]{200,}`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_8", Name: "Shiro deleteMe 探测", Category: "Java漏洞", Pattern: `(?i)(rememberMe=deleteMe|remember-me=deleteMe)`, Action: "log", Enabled: true, Level: 1},
+		{ID: "java_9", Name: "Spring Actuator 敏感端点", Category: "Java漏洞", Pattern: `(?i)/actuator/(heapdump|env|threaddump|mappings|beans|configprops|loggers|dump|trace|jolokia)`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_10", Name: "Arthas 注入路径", Category: "Java漏洞", Pattern: `(?i)(/arthas|arthas-boot\.jar|/commands/jad|/commands/sc|/commands/heapdump|Arthas-Watcher)`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_11", Name: "JDumpSpider/ysoserial 工具", Category: "Java漏洞", Pattern: `(?i)(JDumpSpider|ysoserial|shiro_attack|shiro-exploit|ShiroExploit)`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_12", Name: "Spring Cloud Gateway CVE", Category: "Java漏洞", Pattern: `(?i)(CVE-2022-22947|/actuator/gateway/routes|/actuator/gateway/refresh|spring-cloud-gateway)`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_13", Name: "Druid 未授权监控", Category: "Java漏洞", Pattern: `(?i)/druid/(index\.html|login\.html|sql\.html|datasource\.html|wall\.html)`, Action: "log", Enabled: true, Level: 1},
+		{ID: "java_14", Name: "Nacos/Eureka 未授权", Category: "Java漏洞", Pattern: `(?i)/(nacos|eureka)/?(v1/)?(auth/login|users|configurations|namespace|apps)`, Action: "log", Enabled: true, Level: 1},
+		{ID: "java_15", Name: "Tomcat AJP Ghostcat", Category: "Java漏洞", Pattern: `(?i)(AJP/1\.3|ajp13|/\.\.;/|xhtml\.jsp|CVE-2020-1938)`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_16", Name: "Tomcat PUT 上传 JSP", Category: "Java漏洞", Pattern: `(?i)^(PUT|MOVE)\s+/[^\s]*\.jsp(\s|$)`, Action: "block", Enabled: true, Level: 0},
+		{ID: "java_17", Name: "SnakeYAML 反序列化", Category: "Java漏洞", Pattern: `(?i)(!!javax\.script|!!org\.yaml|!!java\.lang|tag:yaml\.org,2002:javax|script\.ScriptEngineManager)`, Action: "block", Enabled: true, Level: 0},
 
 		// ========== 开放重定向 / CSRF / 请求走私 ==========
 		{ID: "redir_1", Name: "开放重定向", Category: "协议攻击", Pattern: `(?i)(redirect\s*[:=]|return_url\s*=|next\s*=|url\s*[:=]\s*["']?\s*https?://|location\s*[:=]\s*//|\?\w*url=https?://)`, Action: "block", Enabled: true, Level: 1},
@@ -301,7 +312,7 @@ func GenPHP(rules []*Rule, antiImmortal bool, blockAction string) string {
 	sb.WriteString("// ---------- 性能耗时注入 ----------\n")
 	sb.WriteString("$GLOBALS['SHIELD_WAF_TIME'] = microtime(true) - SHIELD_WAF_START;\n")
 	sb.WriteString("if (defined('SHIELD_WAF_VERBOSE') && SHIELD_WAF_VERBOSE) {\n")
-	sb.WriteString("  if (!empty($SHIELD_HIT)) { /* hits: " )
+	sb.WriteString("  if (!empty($SHIELD_HIT)) { /* hits: ")
 	sb.WriteString(" */ }\n")
 	sb.WriteString("}\n")
 

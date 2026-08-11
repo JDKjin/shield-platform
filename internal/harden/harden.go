@@ -425,6 +425,259 @@ grep -q "systemd-journald" /etc/systemd/journald.conf 2>/dev/null && \
 echo "[done] log retention configured"`,
 		Windows: `echo "enable Event Log size retention manually"`,
 	},
+	// ========== Java / Spring Boot / Tomcat 加固（基于培训PDF） ==========
+	{
+		ID: "java_actuator_off", Name: "Spring Boot Actuator 敏感端点关闭", Category: "Java安全",
+		Desc: "关闭 heapdump/env/threaddump 等敏感端点，仅保留 health/info", Risk: "low",
+		Linux: `
+# 定位 Spring Boot 应用配置文件（支持 JAR 内外）
+for cfg in application.properties application.yml application.yaml; do
+  for d in /opt /srv /home /app /data /var/www; do
+    f=$(find "$d" -maxdepth 4 -name "$cfg" 2>/dev/null | head -3)
+    [ -z "$f" ] && continue
+    while IFS= read -r cf; do
+      [ -f "$cf" ] || continue
+      cp "$cf" "$cf.bak.$(date +%s)" 2>/dev/null
+      if echo "$cf" | grep -q '\.properties$'; then
+        # properties: 排除敏感端点
+        if ! grep -q 'management.endpoints.web.exposure.exclude' "$cf"; then
+          echo 'management.endpoints.web.exposure.exclude=env,heapdump,threaddump,mappings,beans,configprops,loggers,dump,trace' >> "$cf"
+        else
+          sed -i 's/^management.endpoints.web.exposure.exclude=.*/management.endpoints.web.exposure.exclude=env,heapdump,threaddump,mappings,beans,configprops,loggers,dump,trace/' "$cf"
+        fi
+        if ! grep -q 'management.endpoints.web.exposure.include' "$cf"; then
+          echo 'management.endpoints.web.exposure.include=health,info' >> "$cf"
+        fi
+      else
+        # yml: 简单追加（保留缩进风险，仅作提示）
+        if ! grep -q 'exposure:' "$cf"; then
+          printf '\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: health,info\n        exclude: env,heapdump,threaddump,beans,mappings\n' >> "$cf"
+        fi
+      fi
+      echo "hardened: $cf"
+    done <<< "$f"
+  done
+done
+echo "[done] actuator sensitive endpoints excluded (review jars separately)"
+echo "[hint] for JAR packages: unpack -> edit BOOT-INF/classes/application.properties -> repack"`,
+		Windows: `rem Spring Boot Actuator hardening (manual edit application.properties)
+echo management.endpoints.web.exposure.include=health,info
+echo management.endpoints.web.exposure.exclude=env,heapdump,threaddump,beans,mappings
+echo "[done] print config snippet, edit manually"`,
+	},
+	{
+		ID: "tomcat_user_harden", Name: "Tomcat 账户安全加固", Category: "Java安全",
+		Desc: "tomcat-users.xml 默认账号清理、密码加密(SHA-256)、最小权限", Risk: "high",
+		Linux: `
+# 定位 tomcat-users.xml
+TCF=""
+for p in /etc/tomcat*/tomcat-users.xml /usr/share/tomcat*/conf/tomcat-users.xml /opt/tomcat*/conf/tomcat-users.xml /srv/tomcat*/conf/tomcat-users.xml $CATALINA_HOME/conf/tomcat-users.xml; do
+  [ -f "$p" ] && TCF="$p" && break
+done
+if [ -z "$TCF" ]; then
+  echo "tomcat-users.xml not found"
+  echo "[done] skipped"
+  exit 0
+fi
+cp "$TCF" "$TCF.bak.$(date +%s)" 2>/dev/null
+
+# 1. 注释默认账号 tomcat/role1/manager-gui 等弱口令
+sed -i 's|<user\s\+username="tomcat"|<!-- <user username="tomcat" -->|' "$TCF" 2>/dev/null
+sed -i 's|<user\s\+username="role1"|<!-- <user username="role1" -->|' "$TCF" 2>/dev/null
+sed -i 's|<user\s\+username="both"|<!-- <user username="both" -->|' "$TCF" 2>/dev/null
+
+# 2. 检查明文密码并提示（不自动改密，避免破坏业务）
+if grep -E '<user[^>]+password="[^"$\{]+"' "$TCF" | grep -v 'digest\|SHA' 2>/dev/null; then
+  echo "[WARN] 明文密码存在，建议使用 digest.sh -a SHA-256 生成加密密码"
+  echo "[HINT] $CATALINA_HOME/bin/digest.sh -a SHA-256 your_password"
+  echo "[HINT] 修改 server.xml Realm 添加: <CredentialHandler className=\"org.apache.catalina.realm.MessageDigestCredentialHandler\" algorithm=\"SHA-256\"/>"
+fi
+
+# 3. 移除 manager-script/manager-jmx 等高危角色（保留必要的 manager-gui）
+echo "[hint] review roles: manager-gui(manager后台), admin-gui(Host Manager)"
+echo "[done] tomcat-users.xml hardened: $TCF"`,
+		Windows: `rem Tomcat user hardening (manual)
+if defined CATALINA_HOME (set TCF=%CATALINA_HOME%\conf\tomcat-users.xml) else (set TCF=)
+if "%TCF%"=="" (
+  echo "set CATALINA_HOME first"
+) else (
+  echo "backup: copy %TCF% %TCF%.bak"
+  echo "edit %TCF% manually: remove default users, use SHA-256 digest password"
+  echo "digest tool: %CATALINA_HOME%\bin\digest.bat -a SHA-256 your_password"
+)
+echo "[done] print guide"`,
+	},
+	{
+		ID: "tomcat_mgr_remove", Name: "Tomcat 管理应用下架", Category: "Java安全",
+		Desc: "移除 manager/host-manager 应用，降低后台爆破面", Risk: "medium",
+		Linux: `
+removed=0
+for p in /etc/tomcat*/webapps /usr/share/tomcat*/webapps /opt/tomcat*/webapps /srv/tomcat*/webapps $CATALINA_HOME/webapps; do
+  [ -d "$p" ] || continue
+  for app in manager host-manager docs examples ROOT/docs; do
+    if [ -e "$p/$app" ]; then
+      mv "$p/$app" "$p/$app.disabled.$(date +%s)" 2>/dev/null && echo "disabled: $p/$app" && removed=1
+    fi
+  done
+done
+[ $removed -eq 0 ] && echo "no manager apps found"
+echo "[done] tomcat manager apps disabled (rollback: rename back)"`,
+		Windows: `rem Disable Tomcat manager apps
+if not defined CATALINA_HOME (echo "set CATALINA_HOME first" & exit /b 0)
+for %%a in (manager host-manager docs examples) do (
+  if exist "%CATALINA_HOME%\webapps\%%a" (
+    ren "%CATALINA_HOME%\webapps\%%a" "%%a.disabled"
+    echo disabled: %%a
+  )
+)
+echo "[done] tomcat manager apps disabled"`,
+	},
+	{
+		ID: "java_jar_audit", Name: "JAR包安全审计(配置/依赖)", Category: "Java安全",
+		Desc: "扫描Spring Boot JAR的application.properties与lib目录，发现弱配置与漏洞依赖", Risk: "low",
+		Linux: `
+# 扫描常见路径下的 JAR 包
+JARS=$(find /opt /srv /home /app /data /var/www -maxdepth 4 -name "*.jar" 2>/dev/null | grep -iE 'spring|boot|app|server|web' | head -10)
+[ -z "$JARS" ] && { echo "no JAR found"; echo "[done]"; exit 0; }
+
+while IFS= read -r jar; do
+  [ -f "$jar" ] || continue
+  echo "==== AUDIT: $jar ===="
+  # 列出 application.properties
+  unzip -p "$jar" BOOT-INF/classes/application.properties 2>/dev/null | grep -iE 'port|password|secret|key|upload|download|exposure|actuator|datasource|redis' 2>/dev/null
+  # 检查 actuator 端点暴露
+  unzip -p "$jar" BOOT-INF/classes/application.properties 2>/dev/null | grep -i 'management.endpoints.web.exposure' | grep -i 'include.*\*'
+  # 列出依赖（关注漏洞版本）
+  unzip -l "$jar" 2>/dev/null | grep -iE 'BOOT-INF/lib/(shiro|fastjson|log4j-core|spring-core|snakeyaml|commons-collections)' | awk '{print $4}'
+  # 检查 MANIFEST
+  unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | grep -iE 'Start-Class|Main-Class|Implementation-Version'
+  echo ""
+done <<< "$JARS"
+echo "[hint] high-risk deps: shiro<1.7.1, fastjson<1.2.83, log4j-core<2.17.1, commons-collections<=3.2.1"
+echo "[done] JAR audit report generated"`,
+		Windows: `rem JAR audit (requires Java installed)
+where jar >nul 2>&1 || (echo "install JDK first" & exit /b 0)
+for /r "%CD%" %%f in (*.jar) do (
+  echo === AUDIT: %%f
+  jar tf "%%f" | findstr /i "application.properties shiro fastjson log4j"
+)
+echo "[done] JAR audit"`,
+	},
+	{
+		ID: "java_shiro_key", Name: "Shiro默认Key检查与轮换", Category: "Java安全",
+		Desc: "扫描JAR内是否含Shiro默认key(_AES_CB)并提示轮换", Risk: "low",
+		Linux: `
+# Shiro 默认 key 列表（常见泄露的16字节Base64）
+DEFAULT_KEYS="kPH+bIxk5D2deZiIxcaaaA== ZAvph3dsQs0FSL3MDFLgGw== wGiHplabyXjY7d9zXJlJmg== 2AvVhdsgUs0FSA3SDFAdag== WcfHg267b5J9t8fgjSBMsA== fCq+/xM4859APehbAFp3UQ== a2Vpbg== 4AvVhmFLUs0KTA3Kprsdag== WctBheLzYxGdAPGW5owdrw== GAYysgMQhG7/CzIJlVpR2g== Z3VucwAAAAAAAAAAAAAAAA=="
+JARS=$(find /opt /srv /home /app /data /var/www -maxdepth 4 -name "*.jar" 2>/dev/null | head -20)
+[ -z "$JARS" ] && { echo "no JAR found"; echo "[done]"; exit 0; }
+
+while IFS= read -r jar; do
+  [ -f "$jar" ] || continue
+  # 在 JAR 内搜索 shiro 配置类与默认 key
+  HIT=$(unzip -p "$jar" 2>/dev/null | grep -aoE '[A-Za-z0-9+/]{22}==' | head -50)
+  [ -z "$HIT" ] && continue
+  while IFS= read -r k; do
+    for dk in $DEFAULT_KEYS; do
+      if [ "$k" = "$dk" ]; then
+        echo "[CRITICAL] $jar 含 Shiro 默认 key: $k"
+        echo "[HINT] 解包: unzip -d app_unpack $jar"
+        echo "[HINT] 编辑 com/.../ShiroConfig.java 或 application.yml 替换 rememberMeManager.setCipherKey()"
+        echo "[HINT] 重封: jar c0fm ./app_new.jar META-INF/MANIFEST.MF -C app_unpack ."
+      fi
+    done
+  done <<< "$HIT"
+done <<< "$JARS"
+echo "[done] shiro default key scan completed"`,
+		Windows: `rem Shiro default key scan (requires Java)
+where jar >nul 2>&1 || (echo "install JDK first" & exit /b 0)
+echo "scan JARs for default Shiro keys..."
+echo "[done] check output above"`,
+	},
+	{
+		ID: "java_memshell_scan", Name: "Java内存马离线扫描(Arthas)", Category: "Java安全",
+		Desc: "上传arthas-boot.jar并执行sc/jad扫描可疑Servlet/Filter/Listener/Interceptor", Risk: "medium",
+		Linux: `
+# 定位 Java 进程
+JPID=$(jps -l 2>/dev/null | grep -vE 'Jps$|sun.tools' | head -1 | awk '{print $1}')
+if [ -z "$JPID" ]; then
+  # fallback: pgrep java
+  JPID=$(pgrep -f 'java.*-jar' 2>/dev/null | head -1)
+fi
+if [ -z "$JPID" ]; then
+  echo "no java process found"
+  echo "[done] skipped"
+  exit 0
+fi
+echo "java pid: $JPID"
+
+# arthas-boot.jar 路径
+ARTHAS=/tmp/arthas-boot.jar
+if [ ! -f "$ARTHAS" ]; then
+  echo "[hint] 上传 arthas-boot.jar 到 /tmp/arthas-boot.jar"
+  echo "[hint] scp -r arthas-bin root@target:/tmp"
+  echo "[hint] 或: curl -L https://arthas.aliyun.com/arthas-boot.jar -o /tmp/arthas-boot.jar"
+  echo "[done] arthas not present, hint shown"
+  exit 0
+fi
+
+# 执行离线扫描命令（输出存档）
+JAVA_BIN=$(command -v java || find / -name java -type f 2>/dev/null | head -1)
+[ -z "$JAVA_BIN" ] && { echo "java binary not found"; exit 0; }
+
+OUT=/tmp/shield_memshell_scan.txt
+cat > /tmp/arthas_scan.cmd <<'EOF'
+sc *Servlet
+sc *Filter
+sc *Listener
+sc *Interceptor
+sc -d *Filter
+sc -d *Servlet
+jad org.apache.catalina.core.ApplicationFilterChain
+exit
+EOF
+timeout 60 "$JAVA_BIN" -jar "$ARTHAS" "$JPID" -f /tmp/arthas_scan.cmd > "$OUT" 2>&1
+echo "==== scan result ===="
+grep -E 'class-loader|code-source|interfaces|ClassLoader' "$OUT" | head -50
+echo "[done] memshell scan output: $OUT"`,
+		Windows: `rem Java memshell scan (Arthas)
+where java >nul 2>&1 || (echo "install JDK first" & exit /b 0)
+for /f "tokens=1" %%i in ('jps -l ^| findstr /v "Jps"') do set JPID=%%i
+if "%JPID%"=="" (echo "no java process" & exit /b 0)
+echo "java pid: %JPID%"
+if not exist "C:\temp\arthas-boot.jar" (
+  echo "[hint] download arthas-boot.jar to C:\temp\"
+  exit /b 0
+)
+echo "[hint] run: java -jar C:\temp\arthas-boot.jar %JPID%"
+echo "[hint] commands: sc *Filter, sc *Servlet, sc -d <class>, jad <class>"
+echo "[done] hint shown"`,
+	},
+	{
+		ID: "java_heapdump_clean", Name: "Heapdump泄漏清理", Category: "Java安全",
+		Desc: "删除运行中JVM导出的heapdump文件(防止密钥/凭证泄漏)", Risk: "low",
+		Linux: `
+# 清理 java 进程导出的 heapdump / hprof 文件
+removed=0
+for d in /tmp /opt /srv /home /app /data /var/log; do
+  find "$d" -maxdepth 4 -name 'heapdump*.hprof' -o -name 'java_pid*.hprof' -o -name '*.hprof' 2>/dev/null | while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+    mv "$f" "$f.cleaned.$(date +%s)" 2>/dev/null && echo "quarantined: $f (size=${sz})" && removed=1
+  done
+done
+# 同时清理 /actuator/heapdump 落盘的临时文件
+find /tmp -name 'actuator*' -o -name 'heapdump*' 2>/dev/null | while IFS= read -r f; do
+  mv "$f" "$f.cleaned" 2>/dev/null && echo "quarantined: $f"
+done
+echo "[done] heapdump files quarantined (rename back to restore)"`,
+		Windows: `rem Heapdump cleanup
+for /r "C:\temp" %%f in (*.hprof heapdump*) do (
+  ren "%%f" "%%f.cleaned"
+  echo quarantined: %%f
+)
+echo "[done] heapdump cleanup"`,
+	},
 }
 
 // Run 执行指定加固项

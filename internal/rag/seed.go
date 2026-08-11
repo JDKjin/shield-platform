@@ -3,7 +3,7 @@ package rag
 import (
 	"embed"
 	"io/fs"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -22,11 +22,13 @@ func (e *Engine) SeedIfEmpty() error {
 			continue
 		}
 		name := en.Name()
-		b, err := seedFS.ReadFile(filepath.Join("seeds", name))
+		// 注意：embed.FS 始终使用正斜杠分隔符，必须用 path.Join 而非 filepath.Join
+		// 否则在 Windows 上 filepath.Join 会产生反斜杠导致 "file does not exist"
+		b, err := seedFS.ReadFile(path.Join("seeds", name))
 		if err != nil {
 			return err
 		}
-		title := strings.TrimSuffix(name, filepath.Ext(name))
+		title := strings.TrimSuffix(name, path.Ext(name))
 		tags := seedTags(title)
 		ok, err := e.ImportText(title, string(b), "预置知识库", tags)
 		if err != nil {
@@ -79,8 +81,17 @@ func seedTags(title string) string {
 	if has("中间件", "CVE", "漏洞", "数据库", "MySQL", "Redis", "Nginx", "Tomcat") {
 		cats = append(cats, "漏洞库")
 	}
+	if has("Java", "Spring", "Shiro", "JAR", "JVM", "Tomcat", "内存马", "反序列化", "Actuator", "Arthas", "Fastjson", "Log4j", "heapdump") {
+		cats = append(cats, "Java安全")
+	}
+	if has("MFA", "多因素", "认证", "权限控制", "PoLP", "爆破", "登录") {
+		cats = append(cats, "认证强化")
+	}
 	if has("赛事", "综合防御", "规则", "计分", "FAQ", "画像", "策略") {
 		cats = append(cats, "赛事知识")
+	}
+	if has("CTF", "Crypto", "MISC", "Writeup", "隐写", "密码学", "工控流量") {
+		cats = append(cats, "CTF")
 	}
 	cats = append(cats, "应急", "防护")
 	seen := map[string]bool{}

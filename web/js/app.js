@@ -93,6 +93,7 @@ function handlePush(d) {
   }
   if (d.type === 'scan_result') {
     UI.toast('收到靶机扫描报告');
+    renderScanReport(d.data);
     loadAlerts(true);
   }
   if (d.type === 'alerts_updated') loadAlerts(true);
