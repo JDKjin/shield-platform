@@ -122,7 +122,6 @@
 **/temp/
 
 # 平台本地数据目录
-**/.monkeycode-tmp-files/
 **/payloads/
 **/dist/
 **/panel.db
@@ -186,4 +185,3 @@
 *.lz
 *.lzma
 *.iso
-.monkeycode/
